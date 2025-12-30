@@ -1,7 +1,12 @@
-from fastapi import FastAPI, HTTPException, File, UploadFile
-from pydantic import BaseModel
-from supabase import create_client, Client
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from supabase import create_client, Client
+import os
+from dotenv import load_dotenv
+
+from pydantic import BaseModel 
+from typing import Optional
+
 import time
 
 app = FastAPI()
@@ -37,6 +42,11 @@ class UserSignupSchema(BaseModel):
     password: str
     phone: str
 
+class ChatMessage(BaseModel):
+    user_email: str
+    sender: str # "user" หรือ "bot"
+    message: Optional[str] = ""
+    image_url: Optional[str] = None
 # ---------------------------------------------------------
 # 3. API เดิมของคุณ
 # ---------------------------------------------------------
@@ -120,3 +130,26 @@ async def upload_image(file: UploadFile = File(...)):
     except Exception as e:
         print("Upload Error:", e)
         raise HTTPException(status_code=500, detail="อัปโหลดรูปไม่สำเร็จ")
+
+@app.get("/history/{user_email}")
+async def get_history(user_email: str):
+    # ดึงข้อมูลจาก Supabase เรียงตามเวลา
+    response = supabase.table("chat_history")\
+        .select("*")\
+        .eq("user_email", user_email)\
+        .order("created_at")\
+        .execute()
+    return response.data
+
+# 3. API บันทึกข้อความใหม่ (POST)
+@app.post("/save-chat")
+async def save_chat(chat: ChatMessage):
+    data = {
+        "user_email": chat.user_email,
+        "sender": chat.sender,
+        "message": chat.message,
+        "image_url": chat.image_url
+    }
+    # สั่งบันทึกลงตาราง chat_history
+    supabase.table("chat_history").insert(data).execute()
+    return {"status": "saved"}
